@@ -1,17 +1,18 @@
 import express from 'express';
 import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
 import joi from 'joi';
 import bcrypt from 'bcrypt';
 import { v4 as uuid } from 'uuid';
+import dayjs from 'dayjs';
 
 dotenv.config();
 
 /*
     {
-        "name": "joão",
-        "email": "joão@gg.com",
+        "name": "lucas",
+        "email": "lucas@gg.com",
         "password": "1234",
         "confirmPassword": "1234"
     }
@@ -34,15 +35,19 @@ server.use(cors());
 server.use(express.json());
 server.listen(PORT);
 
-/*server.get('/users', async(req, res) => {
+server.get('/registers', async(req, res) => {
+    const { _id } = req.body;
+
     try{
-        const gettingUsers = await db.collection('users').find().toArray();
-        return res.send(gettingUsers);
+        const gettingRegisterData = await db.collection('register').find({_id: _id}).toArray();
+        
+        return res.status(200).send(gettingRegisterData);
     }
     catch(error){
         return res.status(500).send(error.message);
     }
-});*/
+});
+
 
 server.post('/sign-in', async(req, res) => {
     const {email, password} = req.body;
@@ -80,7 +85,7 @@ server.post('/sign-in', async(req, res) => {
                     token: token
 			    }
             )
-            return res.status(200).send({token, name:gettingUser.name});
+            return res.status(200).send({token, name:gettingUser.name, id: gettingUser._id});
         }
         else{
             return res.status(404).send('E-mail e/ou senha incorreto(s)');
@@ -129,6 +134,52 @@ server.post('/sign-up', async(req, res) => {
                 name: name,
                 email: email,
                 password: passwordHash
+            }
+        );
+
+        return res.sendStatus(201);
+    }
+    catch(error){
+        return res.status(500).send(error.message);
+    }
+});
+
+server.post('/registerEntryOut', async(req, res) => {
+    const { price, description, id } = req.body;
+    const { config } = req.headers;
+    const token = config?.replace("Bearer ", "");
+
+    const schema = joi.object(
+        {
+            price: joi.string().required(),
+            description: joi.string().required()
+        }
+    );
+
+    const userData = {
+        price: price,
+        description: description
+    };
+
+    const validation = schema.validate(userData, {abortEarly: false});
+
+    if (validation.error) {
+        const errors = validation.error.details.map((detail) => detail.message);
+        return res.status(422).send(errors);
+    };
+
+    try{
+        const session = await db.collection("sessions").findOne({ token: token});
+
+        if (!token || !session) return res.sendStatus(401);
+
+        await db.collection('register').insertOne(
+            {
+                price: price,
+                description: description,
+                _id: ObjectId(id),
+                type: 'entry',
+                date: dayjs().format('DD/MM')
             }
         );
 
